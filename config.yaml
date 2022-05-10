@@ -1,0 +1,12 @@
+# full path to directory that this program will output to
+root_folder: ''
+
+# each playlist will have songs downloaded to its own new folder
+folder_per_playlist: true
+
+# mp3/m4a/flac/opus/ogg/wav (keep in mind max quality source possible is 256kbps AAC)
+output_format: 'mp3'
+
+generate_m3u: true
+
+playlists: [{ name: '', url: '' }]

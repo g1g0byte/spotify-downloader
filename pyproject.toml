@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "spotify-downloader"
+version = "0.1.0"
+description = ""
+authors = ["Gabriel MacCallum <73905643+g1g0byte@users.noreply.github.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+spotdl = "^3.9.5"
+PyYAML = "^6.0"
+spotipy = "^2.19.0"
+
+[tool.poetry.dev-dependencies]
+flake8 = "^4.0.1"
+black = {version = "^22.3.0", allow-prereleases = true}
+mypy = "^0.950"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
