@@ -1,6 +1,8 @@
 import os
 import yaml
 import subprocess
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
 from dataclasses import dataclass
 
 
@@ -47,10 +49,13 @@ def create_directory_paths(root_folder: str, playlists: list[Playlist]) -> list[
     return paths
 
 
-def create_playlists(playlist_data: list[dict], root_folder: str) -> list[Playlist]:
+def create_playlists(username: str, root_folder: str, spotify_client) -> list[Playlist]:
     playlists = []
-    for playlist in playlist_data:
-        playlists.append(Playlist(playlist["name"], playlist["url"], root_folder))
+    user_data = spotify_client.user_playlists(username)
+    for playlist in user_data["items"]:
+        name = playlist["name"]
+        url = playlist["external_urls"]["spotify"]
+        playlists.append(Playlist(name, url, root_folder))
     return playlists
 
 
@@ -120,16 +125,47 @@ def validate_config_data(data: dict) -> dict:
     return new_data
 
 
+def get_spotify_client():
+    client_credentials_manager = SpotifyClientCredentials(
+        client_id="c96eb3dcd29046e685a317b6c4474683",
+        client_secret="c129a8a626d5475081f46d430a08a92f",
+    )
+    spotify_client = spotipy.Spotify(
+        client_credentials_manager=client_credentials_manager
+    )
+    return spotify_client
+
+
+def get_playlists_to_download(playlists: list[Playlist]) -> list[Playlist]:
+    to_add = []
+    for playlist in playlists:
+        response = input(
+            f"download playlist: {playlist.name}? y/n (or empty to accept) "
+        )
+        if response.lower().strip() in ["y", "yes", ""]:
+            to_add.append(playlist)
+            print(f"DOWNLOADING {playlist.name}\n")
+        else:
+            print(f"IGNORING {playlist.name}\n")
+    return to_add
+
+
 def main():
     config_data = load_data()
     config_data = validate_config_data(config_data)
-    playlists = create_playlists(config_data["playlists"], config_data["root_folder"])
+    spotify_client = get_spotify_client()
+    all_playlists = create_playlists(
+        config_data["username"], config_data["root_folder"], spotify_client
+    )
+    playlists_to_download = get_playlists_to_download(all_playlists)
     check_parent_directory_exists(config_data["root_folder"])
     if config_data["folder_per_playlist"]:
-        paths = create_directory_paths(config_data["root_folder"], playlists)
-        playlists = update_playlists_paths(playlists, paths)
+        paths = create_directory_paths(
+            config_data["root_folder"], playlists_to_download
+        )
+        playlists_to_download = update_playlists_paths(playlists_to_download, paths)
         create_directories(paths)
-    download_playlists(playlists, config_data)
+    download_playlists(playlists_to_download, config_data)
 
 
 if __name__ == "__main__":

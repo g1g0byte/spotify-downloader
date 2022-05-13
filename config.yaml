@@ -1,3 +1,6 @@
+# your spotify username (not display name)
+username: ''
+
 # full path to directory that this program will output to
 root_folder: ''
 
@@ -8,5 +11,3 @@ folder_per_playlist: true
 output_format: 'mp3'
 
 generate_m3u: true
-
-playlists: [{ name: '', url: '' }]
