@@ -38,7 +38,9 @@ def create_directories(paths: list[PlaylistPath]) -> None:
             print(error)
 
 
-def create_directory_paths(root_folder: str, playlists: list[Playlist]) -> list[dict]:
+def create_directory_paths(
+    root_folder: str, playlists: list[Playlist]
+) -> list[PlaylistPath]:
     paths = []
     for playlist in playlists:
         try:
@@ -82,9 +84,12 @@ def create_command_string(config_data: dict, playlist: Playlist) -> str:
         playlist.url,
         "--m3u" if config_data["generate_m3u"] else "",
         f'--output-format {config_data["output_format"]}',
+        f'--lyrics-provider {config_data["lyrics_provider"]}',
+        f'--download-threads {config_data["download_threads"]}',
+        f'--search-threads {config_data["search_threads"]}',
         f'--output "{playlist.directory}"',
     ]
-    return "spotdl " + " ".join(arguments)
+    return f"spotdl {' '.join(arguments)}"
 
 
 def download_playlists(playlists: list[Playlist], config_data: dict) -> None:
@@ -102,7 +107,6 @@ def check_parent_directory_exists(path: str) -> None:
 
 
 def validate_config_data(data: dict) -> dict:
-    default_output_format = "mp3"
     new_data = data.copy()
 
     if data["output_format"].lower() not in [
@@ -113,15 +117,26 @@ def validate_config_data(data: dict) -> dict:
         "ogg",
         "wav",
     ]:
-        print(f'invalid output format: {data["output_format"]}')
-        print(f"falling back to default output format: {default_output_format}")
-        new_data["output_format"] = default_output_format
+        raise Exception(
+            "output_format must be of the following (mp3/m4a/flac/opus/ogg/wav)"
+        )
 
     try:
         new_data["root_folder"] = os.path.normpath(data["root_folder"])
     except OSError as error:
         raise error
 
+    if (
+        isinstance(data["download_threads"], int) is False
+        or isinstance(data["search_threads"], int) is False
+    ):
+        raise Exception("download_threads/search_threads must be an integer")
+
+    if data["download_threads"] <= 0 or data["search_threads"] <= 0:
+        raise Exception("download_threads/search_threads must be greater than 0")
+
+    if data["lyrics_provider"] not in ["genius", "musixmatch"]:
+        raise Exception("lyrics_provider must be 'genius' or 'musixmatch'")
     return new_data
 
 
@@ -137,16 +152,31 @@ def get_spotify_client():
 
 
 def get_playlists_to_download(playlists: list[Playlist]) -> list[Playlist]:
-    to_add = []
-    for playlist in playlists:
-        response = input(
-            f"download playlist: {playlist.name}? y/n (or empty to accept) "
-        )
-        if response.lower().strip() in ["y", "yes", ""]:
-            to_add.append(playlist)
-            print(f"DOWNLOADING {playlist.name}\n")
-        else:
-            print(f"IGNORING {playlist.name}\n")
+    playlist_names = [playlist.name for playlist in playlists]
+    print("all your playlists:")
+    print("\n".join(playlist_names))
+    print()
+
+    user_input = (
+        input("download all playlists? ('y' for yes, 'n' to manually select) ")
+        .lower()
+        .strip()
+    )
+    if user_input in ["y", "yes"]:
+        return playlists
+    else:
+        to_add = []
+        for playlist in playlists:
+            user_input = (
+                input(f"download playlist: {playlist.name}? y/n (or empty to accept) ")
+                .lower()
+                .strip()
+            )
+            if user_input in ["y", "yes", ""]:
+                to_add.append(playlist)
+                print(f"DOWNLOADING {playlist.name}\n")
+            else:
+                print(f"IGNORING {playlist.name}\n")
     return to_add
 
 
@@ -159,7 +189,7 @@ def main():
     )
     playlists_to_download = get_playlists_to_download(all_playlists)
     check_parent_directory_exists(config_data["root_folder"])
-    if config_data["folder_per_playlist"]:
+    if config_data["folder_per_playlist"] is True:
         paths = create_directory_paths(
             config_data["root_folder"], playlists_to_download
         )

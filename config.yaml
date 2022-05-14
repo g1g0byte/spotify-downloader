@@ -7,7 +7,10 @@ root_folder: ''
 # each playlist will have songs downloaded to its own new folder
 folder_per_playlist: true
 
+# SPOTDL PARAMETERS
 # mp3/m4a/flac/opus/ogg/wav (keep in mind max quality source possible is 256kbps AAC)
 output_format: 'mp3'
-
+download_threads: 4
+search_threads: 4
+lyrics_provider: 'musixmatch'
 generate_m3u: true
