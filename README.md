@@ -16,10 +16,19 @@ Download all your spotify playlists using [spotDL](https://github.com/spotDL/spo
 
 ## Installation/Setup
 
-1. From 'Releases' download the latest build
-2. Open 'config.yaml' using your preferred text editor 
-      - recommended: [Notepad++](https://notepad-plus-plus.org/)
-3. Add your Spotify username which can be found [here](https://www.spotify.com/account/overview/)
-4. Add the path to the directory you wish for your playlists to be downloaded to
-5. Run 'main.exe' and follow the instructions
+1. From [releases](https://github.com/g1g0byte/spotify-downloader/releases) download the latest build
 
+2. Open `config.yaml` using your preferred text editor 
+      - recommended: [Notepad++](https://notepad-plus-plus.org/)
+
+3. Add your Spotify username which can be found at [www.spotify.com/account/overview](https://www.spotify.com/account/overview/)
+```yaml
+ username: 'abcdefghiklmnopqrstuvwxyz'
+```
+
+4. Add the path to the directory you wish to download your playlists
+```yaml
+ root_folder: 'C:\Never\Gonna\Give\You\Up'
+```
+
+5. Run `main.exe` and follow the instructions
