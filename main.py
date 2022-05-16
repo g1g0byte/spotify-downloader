@@ -5,7 +5,21 @@ import spotipy
 import fnmatch
 import subprocess
 from dataclasses import dataclass
+from rich.console import Console
+from alive_progress import alive_bar, config_handler
 from spotipy.oauth2 import SpotifyClientCredentials
+
+console = Console()
+
+# progress bar config
+config_handler.set_global(
+    spinner=None,
+    unknown="stars",
+    enrich_print=False,
+    stats=False,
+    monitor=False,
+    ctrl_c=False,
+)
 
 
 class ConfigError(Exception):
@@ -47,7 +61,7 @@ def create_directories(paths: list[PlaylistPath]) -> None:
         except FileExistsError:
             pass
         except OSError as error:
-            print(error)
+            console.print(error)
 
 
 def create_paths(root_folder: str, playlists: list[Playlist]) -> list[PlaylistPath]:
@@ -107,13 +121,15 @@ def create_command_string(config_data: dict, playlist: Playlist) -> str:
 
 
 def download_playlist(command: str, name: str) -> None:
-    print("\n" + name)
+    console.rule(name, style="white")
+    console.print("\n")
     with subprocess.Popen(command, stdout=subprocess.PIPE) as process:
-        for line in process.stdout:
-            try:
-                print(line.decode().strip())
-            except UnicodeDecodeError:
-                pass
+        with alive_bar():
+            for line in process.stdout:
+                try:
+                    console.print(line.decode().strip())
+                except UnicodeDecodeError:
+                    pass
 
 
 def get_song_count_from_disk(path: str) -> int:
@@ -130,13 +146,15 @@ def download_playlists(playlists: list[Playlist], config_data: dict) -> None:
 
         num_songs_downloaded = get_song_count_from_disk(playlist.path)
         if num_songs_downloaded < playlist.song_count:
-            print(
+            console.print(
                 f"{str(num_songs_downloaded)}/{playlist.song_count} songs found and downloaded"
             )
         else:
-            print("all songs successfully downloaded!")
+            console.print(
+                "[bold][green]all songs successfully downloaded![/bold][/green]"
+            )
 
-        print("\n\n\n")
+        console.print("\n\n\n")
 
 
 def check_root_directory_exists(path: str) -> None:
@@ -165,8 +183,9 @@ def get_spotify_client() -> spotipy.Spotify:
 
 def get_playlists_to_download(playlists: list[Playlist]) -> list[Playlist]:
     playlist_names = [playlist.name for playlist in playlists]
-    print("all your playlists:")
-    print("\n".join(playlist_names))
+    console.print("[bold]all your playlists:[/bold]")
+    for i, name in enumerate(playlist_names):
+        print(f"{i+1}. {name}")
     print()
 
     user_input = (
@@ -174,6 +193,7 @@ def get_playlists_to_download(playlists: list[Playlist]) -> list[Playlist]:
         .lower()
         .strip()
     )
+    print()
     if user_input in ["y", "yes"]:
         return playlists
     else:
@@ -186,9 +206,9 @@ def get_playlists_to_download(playlists: list[Playlist]) -> list[Playlist]:
             )
             if user_input in ["y", "yes", ""]:
                 to_add.append(playlist)
-                print(f"DOWNLOADING {playlist.name}\n")
+                console.print(f"[green]DOWNLOADING {playlist.name}[/green]\n")
             else:
-                print(f"IGNORING {playlist.name}\n")
+                console.print(f"[red]IGNORING {playlist.name}[/red]\n")
     return to_add
 
 
@@ -243,7 +263,7 @@ def check_config_data_valid(data: dict) -> None:
             )
 
     except ConfigError as e:
-        print(e)
+        console.print(e)
         input("press ENTER to exit...")
         sys.exit()
 
