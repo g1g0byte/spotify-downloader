@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "spotify-downloader"
-version = "0.2.0-alpha"
+version = "0.3.0-alpha"
 description = ""
 authors = ["Gabriel MacCallum <73905643+g1g0byte@users.noreply.github.com>"]
 
