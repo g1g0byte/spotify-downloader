@@ -9,8 +9,8 @@ python = "^3.9"
 spotdl = "^3.9.5"
 PyYAML = "^6.0"
 spotipy = "^2.19.0"
-alive-progress = "^2.4.1"
-rich = "^12.4.1"
+colorama = "^0.4.4"
+halo = "^0.0.31"
 
 [tool.poetry.dev-dependencies]
 flake8 = "^4.0.1"

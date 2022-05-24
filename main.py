@@ -1,33 +1,16 @@
+import yaml
 import os
 import sys
-import yaml
 import spotipy
-import fnmatch
 import subprocess
+import fnmatch
 from dataclasses import dataclass
-from rich.console import Console
-from alive_progress import alive_bar, config_handler
+from validate_config import check_config_data_valid
 from spotipy.oauth2 import SpotifyClientCredentials
+from colorama import init, Style, Fore
+from halo import Halo
 
-console = Console()
-
-# progress bar config
-config_handler.set_global(
-    spinner=None,
-    unknown="stars",
-    enrich_print=False,
-    stats=False,
-    monitor=False,
-    ctrl_c=False,
-)
-
-
-class ConfigError(Exception):
-    def __init__(self, value):
-        self.value = value
-
-    def __str__(self):
-        return self.value
+init(autoreset=True)
 
 
 @dataclass(frozen=True)
@@ -39,10 +22,16 @@ class Playlist:
     song_count: int
 
 
-@dataclass(frozen=True)
-class PlaylistPath:
-    playlist_name: str
-    path: str
+def check_config_exists() -> None:
+    try:
+        if os.path.isfile(os.path.join(os.getcwd(), "config.yaml")) is False:
+            print(
+                "'config.yaml' not found. Please restore or get from: https://github.com/g1g0byte/spotify-downloader/blob/main/config.yaml"
+            )
+            input("press ENTER to exit...")
+            sys.exit()
+    except OSError as error:
+        raise error
 
 
 def load_data() -> dict:
@@ -54,25 +43,28 @@ def load_data() -> dict:
     return data
 
 
-def create_directories(paths: list[PlaylistPath]) -> None:
-    for path in paths:
-        try:
-            os.mkdir(path.path)
-        except FileExistsError:
-            pass
-        except OSError as error:
-            console.print(error)
+def normalize_root_path(path: str) -> str:
+    try:
+        new_path = os.path.normpath(path)
+    except OSError as error:
+        raise error
+    return new_path
 
 
-def create_paths(root_folder: str, playlists: list[Playlist]) -> list[PlaylistPath]:
-    paths = []
-    for playlist in playlists:
-        try:
-            path = os.path.join(root_folder, playlist.name)
-            paths.append(PlaylistPath(playlist.name, path))
-        except OSError as error:
-            raise error
-    return paths
+def check_root_directory_exists(path: str) -> None:
+    if os.path.isdir(path) is False:
+        os.makedirs(path)
+
+
+def get_spotify_client() -> spotipy.Spotify:
+    client_credentials_manager = SpotifyClientCredentials(
+        client_id="c96eb3dcd29046e685a317b6c4474683",
+        client_secret="c129a8a626d5475081f46d430a08a92f",
+    )
+    spotify_client = spotipy.Spotify(
+        client_credentials_manager=client_credentials_manager
+    )
+    return spotify_client
 
 
 def create_playlists(username: str, root_folder: str, spotify_client) -> list[Playlist]:
@@ -83,28 +75,63 @@ def create_playlists(username: str, root_folder: str, spotify_client) -> list[Pl
         url = playlist["external_urls"]["spotify"]
         spotify_id = playlist["id"]
         song_count = playlist["tracks"]["total"]
-        playlists.append(Playlist(name, url, root_folder, spotify_id, song_count))
+        path = os.path.join(root_folder, name)
+        playlists.append(Playlist(name, url, path, spotify_id, song_count))
     return playlists
 
 
-def update_playlists_paths(
-    playlists: list[Playlist], paths: list[PlaylistPath]
-) -> list[Playlist]:
-    new_playlists = []
-    for path in paths:
-        corresponding_playlist = next(
-            (playlist for playlist in playlists if playlist.name == path.playlist_name)
-        )
-        new_playlists.append(
-            Playlist(
-                corresponding_playlist.name,
-                corresponding_playlist.url,
-                path.path,
-                corresponding_playlist.spotify_id,
-                corresponding_playlist.song_count,
+def get_playlists_to_download(playlists: list[Playlist]) -> list[Playlist]:
+    playlist_names = [playlist.name for playlist in playlists]
+    print(Style.BRIGHT + "all your playlists:")
+    for i, name in enumerate(playlist_names):
+        print(f"{i+1}. {name}")
+    print()
+
+    user_input = (
+        input("download all playlists? ('y' for yes, 'n' to manually select) ")
+        .lower()
+        .strip()
+    )
+    print()
+
+    if user_input in ["y", "yes"]:
+        return playlists
+    else:
+        to_add = []
+        print("'y' to download. 'enter' to ignore")
+        for playlist in playlists:
+            user_input = (
+                input(f"download playlist: {playlist.name}? [y/enter] ").lower().strip()
             )
-        )
-    return new_playlists
+            if user_input in ["y", "yes"]:
+                to_add.append(playlist)
+                print(Fore.GREEN + f"DOWNLOADING {playlist.name}\n")
+            else:
+                print(Fore.RED + f"IGNORING {playlist.name}\n")
+        if len(to_add) == 0:
+            print("no playlists selected :/")
+            input("press ENTER to exit...")
+            sys.exit()
+
+    return to_add
+
+
+def create_directories(paths: list[str]) -> None:
+    for path in paths:
+        try:
+            os.mkdir(path)
+        except FileExistsError:
+            pass
+        except OSError as error:
+            raise error
+
+
+def download_playlists(playlists: list[Playlist], config_data: dict) -> None:
+    for playlist in playlists:
+        print(Style.BRIGHT + f"{playlist.name}\n")
+        command = create_command_string(config_data, playlist)
+        download_playlist(command)
+        display_playlist_result(playlist.path, playlist.song_count)
 
 
 def create_command_string(config_data: dict, playlist: Playlist) -> str:
@@ -120,16 +147,55 @@ def create_command_string(config_data: dict, playlist: Playlist) -> str:
     return f"spotdl {' '.join(arguments)}"
 
 
-def download_playlist(command: str, name: str) -> None:
-    console.rule(name, style="white")
-    console.print("\n")
+def download_playlist(command: str) -> None:
+    spinner = Halo(
+        text="Working on tasks",
+        spinner="simpleDots",
+        color="white",
+        placement="right",
+    )
+    spinner.start()
     with subprocess.Popen(command, stdout=subprocess.PIPE) as process:
-        with alive_bar():
-            for line in process.stdout:
-                try:
-                    console.print(line.decode().strip())
-                except UnicodeDecodeError:
-                    pass
+        for line in process.stdout:
+            spinner.stop()
+            try:
+                print(line.decode().strip())
+            except UnicodeDecodeError:
+                pass
+
+
+def display_playlist_result(path: str, song_count: int) -> None:
+    num_songs_downloaded = get_song_count_from_disk(path)
+
+    if num_songs_downloaded == 0:
+        print(
+            Fore.RED
+            + f"{str(num_songs_downloaded)}/{song_count}\tno songs could be found or downloaded!"
+        )
+    elif num_songs_downloaded < song_count:
+        percentage_downloaded = round((num_songs_downloaded / song_count) * 100)
+        if percentage_downloaded < 33:
+            print(
+                Fore.RED
+                + f"{str(num_songs_downloaded)}/{song_count}\t{percentage_downloaded}% of songs found and downloaded"
+            )
+        elif percentage_downloaded < 66:
+            print(
+                Fore.YELLOW
+                + f"{str(num_songs_downloaded)}/{song_count}\t{percentage_downloaded}% of songs found and downloaded"
+            )
+        else:
+            print(
+                Fore.GREEN
+                + f"{str(num_songs_downloaded)}/{song_count}\t{percentage_downloaded}% of songs found and downloaded"
+            )
+    else:
+        print(
+            Fore.GREEN
+            + f"{str(num_songs_downloaded)}/{song_count}\tall songs successfully downloaded!"
+        )
+
+    print("\n\n\n")
 
 
 def get_song_count_from_disk(path: str) -> int:
@@ -139,136 +205,8 @@ def get_song_count_from_disk(path: str) -> int:
     return count
 
 
-def download_playlists(playlists: list[Playlist], config_data: dict) -> None:
-    for playlist in playlists:
-        command = create_command_string(config_data, playlist)
-        download_playlist(command, playlist.name)
-
-        num_songs_downloaded = get_song_count_from_disk(playlist.path)
-        if num_songs_downloaded < playlist.song_count:
-            console.print(
-                f"{str(num_songs_downloaded)}/{playlist.song_count} songs found and downloaded"
-            )
-        else:
-            console.print(
-                "[bold][green]all songs successfully downloaded![/bold][/green]"
-            )
-
-        console.print("\n\n\n")
-
-
-def check_root_directory_exists(path: str) -> None:
-    if os.path.isdir(path) is False:
-        os.makedirs(path)
-
-
-def normalize_root_path(path: str) -> str:
-    try:
-        new_path = os.path.normpath(path)
-    except OSError as error:
-        raise error
-    return new_path
-
-
-def get_spotify_client() -> spotipy.Spotify:
-    client_credentials_manager = SpotifyClientCredentials(
-        client_id="c96eb3dcd29046e685a317b6c4474683",
-        client_secret="c129a8a626d5475081f46d430a08a92f",
-    )
-    spotify_client = spotipy.Spotify(
-        client_credentials_manager=client_credentials_manager
-    )
-    return spotify_client
-
-
-def get_playlists_to_download(playlists: list[Playlist]) -> list[Playlist]:
-    playlist_names = [playlist.name for playlist in playlists]
-    console.print("[bold]all your playlists:[/bold]")
-    for i, name in enumerate(playlist_names):
-        print(f"{i+1}. {name}")
-    print()
-
-    user_input = (
-        input("download all playlists? ('y' for yes, 'n' to manually select) ")
-        .lower()
-        .strip()
-    )
-    print()
-    if user_input in ["y", "yes"]:
-        return playlists
-    else:
-        to_add = []
-        for playlist in playlists:
-            user_input = (
-                input(f"download playlist: {playlist.name}? y/n (or empty to accept) ")
-                .lower()
-                .strip()
-            )
-            if user_input in ["y", "yes", ""]:
-                to_add.append(playlist)
-                console.print(f"[green]DOWNLOADING {playlist.name}[/green]\n")
-            else:
-                console.print(f"[red]IGNORING {playlist.name}[/red]\n")
-    return to_add
-
-
-def check_config_data_valid(data: dict) -> None:
-    try:
-        if data["username"] is None or data["username"].strip() == "":
-            raise ConfigError("'username' in config.yaml is required")
-        elif isinstance(data["username"], str) is False:
-            raise ConfigError("'username' in config.yaml must be a string")
-        elif len(data["username"]) != 25:
-            raise ConfigError("'username' in config.yaml should be 25 characters long")
-
-        if data["root_folder"] is None or data["root_folder"].strip() == "":
-            raise ConfigError("'root_folder' in config.yaml is required")
-        elif isinstance(data["root_folder"], str) is False:
-            raise ConfigError("'root_folder' in config.yaml must be a string")
-
-        if data["output_format"] is None or data["output_format"].strip() == "":
-            raise ConfigError("'output_format' in config.yaml is required")
-        elif data["output_format"].lower() not in [
-            "mp3",
-            "m4a",
-            "flac",
-            "opus",
-            "ogg",
-            "wav",
-        ]:
-            raise ConfigError(
-                "'output_format' in config.yaml must be of the following (mp3/m4a/flac/opus/ogg/wav)"
-            )
-
-        if data["download_threads"] is None or data["search_threads"] is None:
-            raise ConfigError(
-                "'download_threads'/'search_threads' in config.yaml is required"
-            )
-        elif (
-            isinstance(data["download_threads"], int) is False
-            or isinstance(data["search_threads"], int) is False
-        ):
-            raise ConfigError(
-                "'download_threads'/'search_threads' in config.yaml must be an integer"
-            )
-
-        elif data["download_threads"] <= 0 or data["search_threads"] <= 0:
-            raise ConfigError(
-                "'download_threads'/'search_threads' in config.yaml must be greater than 0"
-            )
-
-        if data["lyrics_provider"] not in ["genius", "musixmatch"]:
-            raise ConfigError(
-                "'lyrics_provider' in config.yaml must be 'genius' or 'musixmatch'"
-            )
-
-    except ConfigError as e:
-        console.print(e)
-        input("press ENTER to exit...")
-        sys.exit()
-
-
 def main():
+    check_config_exists()
     config_data = load_data()
     check_config_data_valid(config_data)
     config_data["root_folder"] = normalize_root_path(config_data["root_folder"])
@@ -281,11 +219,12 @@ def main():
     playlists_to_download = get_playlists_to_download(all_playlists)
 
     if config_data["folder_per_playlist"] is True:
-        paths = create_paths(config_data["root_folder"], playlists_to_download)
-        playlists_to_download = update_playlists_paths(playlists_to_download, paths)
-        create_directories(paths)
+        create_directories([playlist.path for playlist in playlists_to_download])
 
     download_playlists(playlists_to_download, config_data)
+
+    print("\n\nProgram successfully finished!")
+    input("press ENTER to exit...")
 
 
 if __name__ == "__main__":
