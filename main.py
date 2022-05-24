@@ -28,12 +28,15 @@ class PlaylistPath:
 
 
 def check_config_exists() -> None:
-    if os.path.isfile(os.path.join(os.getcwd(), "config.yaml")) is False:
-        print(
-            "'config.yaml' not found. Please restore or get from: https://github.com/g1g0byte/spotify-downloader/blob/main/config.yaml"
-        )
-        input("press ENTER to exit...")
-        sys.exit()
+    try:
+        if os.path.isfile(os.path.join(os.getcwd(), "config.yaml")) is False:
+            print(
+                "'config.yaml' not found. Please restore or get from: https://github.com/g1g0byte/spotify-downloader/blob/main/config.yaml"
+            )
+            input("press ENTER to exit...")
+            sys.exit()
+    except OSError as error:
+        raise error
 
 
 def load_data() -> dict:
@@ -94,21 +97,26 @@ def get_playlists_to_download(playlists: list[Playlist]) -> list[Playlist]:
         .strip()
     )
     print()
+
     if user_input in ["y", "yes"]:
         return playlists
     else:
         to_add = []
+        print("'y' to download. 'enter' to ignore")
         for playlist in playlists:
             user_input = (
-                input(f"download playlist: {playlist.name}? ('y': yes / 'enter': no) ")
-                .lower()
-                .strip()
+                input(f"download playlist: {playlist.name}? [y/enter] ").lower().strip()
             )
             if user_input in ["y", "yes"]:
                 to_add.append(playlist)
                 print(Fore.GREEN + f"DOWNLOADING {playlist.name}\n")
             else:
-                print(Fore.RED + f"[bold red]IGNORING {playlist.name}[/bold red]\n")
+                print(Fore.RED + f"IGNORING {playlist.name}\n")
+        if len(to_add) == 0:
+            print("no playlists selected :/")
+            input("press ENTER to exit...")
+            sys.exit()
+
     return to_add
 
 
@@ -150,7 +158,7 @@ def create_directories(paths: list[PlaylistPath]) -> None:
         except FileExistsError:
             pass
         except OSError as error:
-            print(error)
+            raise error
 
 
 def download_playlists(playlists: list[Playlist], config_data: dict) -> None:
