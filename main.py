@@ -1,12 +1,13 @@
 import yaml
 import os
+import sys
 import spotipy
 import subprocess
 import fnmatch
 from dataclasses import dataclass
 from validate_config import check_config_data_valid
 from spotipy.oauth2 import SpotifyClientCredentials
-from colorama import init, deinit, Style, Fore
+from colorama import init, Style, Fore
 
 init(autoreset=True)
 
@@ -24,6 +25,15 @@ class Playlist:
 class PlaylistPath:
     playlist_name: str
     path: str
+
+
+def check_config_exists() -> None:
+    if os.path.isfile(os.path.join(os.getcwd(), "config.yaml")) is False:
+        print(
+            "'config.yaml' not found. Please restore or get from: https://github.com/g1g0byte/spotify-downloader/blob/main/config.yaml"
+        )
+        input("press ENTER to exit...")
+        sys.exit()
 
 
 def load_data() -> dict:
@@ -215,6 +225,7 @@ def get_song_count_from_disk(path: str) -> int:
 
 
 def main():
+    check_config_exists()
     config_data = load_data()
     check_config_data_valid(config_data)
     config_data["root_folder"] = normalize_root_path(config_data["root_folder"])
@@ -235,7 +246,6 @@ def main():
 
     print("\n\nProgram successfully finished!")
     input("press ENTER to exit...")
-    deinit()
 
 
 if __name__ == "__main__":
