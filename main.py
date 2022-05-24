@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from validate_config import check_config_data_valid
 from spotipy.oauth2 import SpotifyClientCredentials
 from colorama import init, Style, Fore
+from halo import Halo
 
 init(autoreset=True)
 
@@ -19,12 +20,6 @@ class Playlist:
     path: str
     spotify_id: str
     song_count: int
-
-
-@dataclass(frozen=True)
-class PlaylistPath:
-    playlist_name: str
-    path: str
 
 
 def check_config_exists() -> None:
@@ -80,7 +75,8 @@ def create_playlists(username: str, root_folder: str, spotify_client) -> list[Pl
         url = playlist["external_urls"]["spotify"]
         spotify_id = playlist["id"]
         song_count = playlist["tracks"]["total"]
-        playlists.append(Playlist(name, url, root_folder, spotify_id, song_count))
+        path = os.path.join(root_folder, name)
+        playlists.append(Playlist(name, url, path, spotify_id, song_count))
     return playlists
 
 
@@ -120,41 +116,10 @@ def get_playlists_to_download(playlists: list[Playlist]) -> list[Playlist]:
     return to_add
 
 
-def create_paths(root_folder: str, playlists: list[Playlist]) -> list[PlaylistPath]:
-    paths = []
-    for playlist in playlists:
-        try:
-            path = os.path.join(root_folder, playlist.name)
-            paths.append(PlaylistPath(playlist.name, path))
-        except OSError as error:
-            raise error
-    return paths
-
-
-def update_playlists_paths(
-    playlists: list[Playlist], paths: list[PlaylistPath]
-) -> list[Playlist]:
-    new_playlists = []
-    for path in paths:
-        corresponding_playlist = next(
-            (playlist for playlist in playlists if playlist.name == path.playlist_name)
-        )
-        new_playlists.append(
-            Playlist(
-                corresponding_playlist.name,
-                corresponding_playlist.url,
-                path.path,
-                corresponding_playlist.spotify_id,
-                corresponding_playlist.song_count,
-            )
-        )
-    return new_playlists
-
-
-def create_directories(paths: list[PlaylistPath]) -> None:
+def create_directories(paths: list[str]) -> None:
     for path in paths:
         try:
-            os.mkdir(path.path)
+            os.mkdir(path)
         except FileExistsError:
             pass
         except OSError as error:
@@ -183,8 +148,16 @@ def create_command_string(config_data: dict, playlist: Playlist) -> str:
 
 
 def download_playlist(command: str) -> None:
+    spinner = Halo(
+        text="Working on tasks",
+        spinner="simpleDots",
+        color="white",
+        placement="right",
+    )
+    spinner.start()
     with subprocess.Popen(command, stdout=subprocess.PIPE) as process:
         for line in process.stdout:
+            spinner.stop()
             try:
                 print(line.decode().strip())
             except UnicodeDecodeError:
@@ -246,9 +219,7 @@ def main():
     playlists_to_download = get_playlists_to_download(all_playlists)
 
     if config_data["folder_per_playlist"] is True:
-        paths = create_paths(config_data["root_folder"], playlists_to_download)
-        playlists_to_download = update_playlists_paths(playlists_to_download, paths)
-        create_directories(paths)
+        create_directories([playlist.path for playlist in playlists_to_download])
 
     download_playlists(playlists_to_download, config_data)
 
